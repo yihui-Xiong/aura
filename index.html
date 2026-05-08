@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#9ea9b8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Aura">
+<title>aura</title>
+<link rel="icon" href="favicon.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="aura.css">
+</head>
+<body>
+
+<!-- Sign-in screen -->
+<div class="view" id="viewAuth">
+  <div class="auth-screen">
+    <div class="auth-title">aura</div>
+    <div class="auth-subtitle">sign in to begin</div>
+    <div class="sync-row">
+      <div class="sync-actions">
+        <button class="sync-btn auth-choice" id="syncButton" onclick="toggleCloudSignIn()">continue with Google</button>
+        <button class="sync-btn auth-choice" id="emailSyncButton" onclick="openEmailAuth()">continue with email</button>
+        <button class="sync-btn auth-choice" id="guestSyncButton" onclick="continueAsGuest()">continue as guest</button>
+        <button class="sync-btn account-action hidden" id="cloudSignOutButton" onclick="doCloudSignOut()">cloud sign out</button>
+        <button class="sync-btn account-action hidden" id="guestResetButton" onclick="resetAccountChoice()">change sign-in</button>
+      </div>
+      <div class="sync-status" id="syncStatus">choose how to continue</div>
+    </div>
+  </div>
+</div>
+
+<!-- Profile screen -->
+<div class="view hidden" id="viewProfile">
+  <div class="profile-screen">
+    <div class="profile-title">profile</div>
+    <div class="profile-picker" id="profilePicker">
+      <div class="profile-list" id="profileList"></div>
+      <div class="profile-new-wrap" id="profileNewWrap">
+        <button class="profile-new-btn" onclick="showNewProfileInput()">+ new profile</button>
+        <div class="profile-new-input-row hidden" id="profileNewInputRow">
+          <input id="profileNewInput" type="text" placeholder="your name" maxlength="40" autocomplete="off">
+          <button class="profile-new-confirm" onclick="confirmNewProfile()">→</button>
+        </div>
+      </div>
+    </div>
+    <div class="profile-actions" id="profileActions">
+      <button class="profile-action-btn" onclick="openRename()">change name</button>
+      <button class="profile-action-btn" onclick="exportData()">export data</button>
+      <button class="profile-action-btn" onclick="document.getElementById('importInput').click()">import data</button>
+      <button class="profile-action-btn profile-action-danger" onclick="openDeleteProfile()">delete profile</button>
+      <button class="profile-action-btn profile-action-danger" onclick="openLogout()">sign out</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete profile modal -->
+<div class="modal-overlay" id="deleteProfileOverlay">
+  <div class="modal">
+    <div class="modal-title">delete profile</div>
+    <div class="confirm-copy">delete profile <span class="confirm-word" id="deleteProfileName"></span> and all of its journal data?</div>
+    <div class="modal-actions logout-actions">
+      <button class="modal-btn" onclick="closeDeleteProfile()">cancel</button>
+      <button class="modal-btn danger" onclick="confirmDeleteProfile()">delete profile</button>
+    </div>
+  </div>
+</div>
+
+<!-- Logout modal -->
+<div class="modal-overlay" id="logoutOverlay">
+  <div class="modal">
+    <div class="modal-title">sign out</div>
+    <div class="confirm-copy">signing out of <span class="confirm-word" id="logoutName"></span>.<br>do you want to delete this journal data too?</div>
+    <div class="modal-actions logout-actions">
+      <button class="modal-btn" onclick="closeLogout()">cancel</button>
+      <button class="modal-btn danger" onclick="doLogout(true)">delete data &amp; sign out</button>
+      <button class="modal-btn primary" onclick="doLogout(false)">sign out</button>
+    </div>
+  </div>
+</div>
+
+<!-- Main view -->
+<div class="view hidden" id="viewMain">
+  <div class="quick-nav" aria-label="quick navigation">
+    <button class="quick-nav-btn" onclick="showCal()">journal</button>
+    <button class="quick-nav-btn" onclick="showFav()" aria-label="favourites">faves</button>
+  </div>
+  <div class="profile-bar">
+    <button class="profile-chip" id="profileChip" onclick="toggleProfileMenu()">
+      <span class="profile-chip-avatar" id="profileChipAvatar"></span>
+      <span class="profile-chip-name" id="profileChipName"></span>
+      <span class="profile-chip-caret">▾</span>
+    </button>
+    <div class="profile-menu" id="profileMenu">
+      <div class="profile-menu-inner">
+        <button class="profile-menu-item" onclick="closeProfileMenu();exportData()">export data</button>
+        <button class="profile-menu-item" onclick="closeProfileMenu();document.getElementById('importInput').click()">import data</button>
+        <button class="profile-menu-item" id="syncMenuButton" onclick="closeProfileMenu();toggleCloudSignIn()">sync with Google</button>
+        <button class="profile-menu-item" id="emailSyncMenuButton" onclick="closeProfileMenu();openEmailAuth()">sync with email</button>
+        <div class="profile-menu-status" id="syncMenuStatus">sync is off</div>
+        <input type="file" id="importInput" accept=".json" style="display:none" onchange="importData(event)">
+        <div class="profile-menu-divider"></div>
+        <button class="profile-menu-item" onclick="closeProfileMenu();openRename()">change name</button>
+        <button class="profile-menu-item" onclick="closeProfileMenu();openProfileScreen()">switch profile</button>
+        <button class="profile-menu-item profile-menu-item-danger" onclick="closeProfileMenu();openLogout()">sign out</button>
+      </div>
+    </div>
+  </div>
+  <canvas id="c"></canvas>
+  <div class="meta">
+    <div class="word-label" id="lbl"></div>
+    <div class="date-label" id="dlbl"></div>
+  </div>
+  <div class="home-controls">
+    <div class="ui">
+      <input id="w" type="text" placeholder="one word for today" maxlength="90" autocomplete="off">
+      <button class="clear-input" onclick="clearPrompt()" aria-label="clear" title="clear">×</button>
+      <button class="btn" onclick="gen()">generate</button>
+    </div>
+    <div class="actions">
+      <button class="act icon-act" onclick="openExport()" aria-label="save image" title="save image">
+        <svg class="act-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"></path><path d="m7 10 5 5 5-5"></path><path d="M5 21h14"></path></svg>
+        <span class="act-label">image</span>
+      </button>
+      <div class="save-group">
+        <button class="act save-act icon-act" id="saveBtn" onclick="saveEntry()" aria-label="save to journal" title="save to journal">
+          <svg class="act-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5V5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5"></path><path d="M8 7h8"></path><path d="M8 11h6"></path></svg>
+          <span class="act-label">save to journal</span>
+        </button>
+        <button class="act fav-act icon-act" id="favBtn" onclick="toggleFavFromHome()" aria-label="favourite" title="favourite"><span class="fav-star" id="favStar" aria-hidden="true">☆</span><span class="act-label">favourite</span></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Email sync modal -->
+<div class="modal-overlay" id="emailAuthOverlay">
+  <div class="modal">
+    <div class="modal-title">sync with email</div>
+    <div class="email-auth-tabs">
+      <button class="email-auth-tab selected" id="emailSignInTab" onclick="setEmailAuthMode('signIn')">sign in</button>
+      <button class="email-auth-tab" id="emailCreateTab" onclick="setEmailAuthMode('create')">create account</button>
+    </div>
+    <div class="modal-row">
+      <div class="modal-label">email</div>
+      <input class="modal-input" id="emailAuthEmail" type="email" placeholder="you@example.com" maxlength="120" autocomplete="email">
+    </div>
+    <div class="modal-row">
+      <div class="modal-label">password</div>
+      <input class="modal-input" id="emailAuthPassword" type="password" placeholder="password" maxlength="120" autocomplete="current-password">
+      <input class="modal-input" id="emailAuthPasswordConfirm" type="password" placeholder="re-enter password" maxlength="120" autocomplete="new-password">
+      <div class="modal-note" id="emailAuthNote"></div>
+    </div>
+    <div class="modal-actions email-auth-actions">
+      <button class="modal-btn" onclick="closeEmailAuth()">cancel</button>
+      <button class="modal-btn primary" id="emailAuthSubmit" onclick="submitEmailAuth()">sign in</button>
+    </div>
+  </div>
+</div>
+
+<div class="mobile-tabbar" id="mobileTabbar" aria-label="mobile navigation">
+  <button class="mobile-tab-btn" data-tab="main" onclick="showMainView()">aura</button>
+  <button class="mobile-tab-btn" data-tab="journal" onclick="showCal()">journal</button>
+  <button class="mobile-tab-btn" data-tab="faves" onclick="showFav()">faves</button>
+  <button class="mobile-tab-btn" data-tab="profile" onclick="openProfileScreen()">profile</button>
+</div>
+
+<!-- Rename modal -->
+<div class="modal-overlay" id="renameOverlay">
+  <div class="modal">
+    <div class="modal-title">change name</div>
+    <div class="modal-row">
+      <input class="modal-input" id="renameInput" type="text" placeholder="your name" maxlength="40" autocomplete="off">
+      <div class="modal-note" id="renameNote"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn" onclick="closeRename()">cancel</button>
+      <button class="modal-btn primary" onclick="confirmRename()">save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Export modal -->
+<div class="modal-overlay" id="exportOverlay">
+  <div class="modal">
+    <div class="modal-title">save as image</div>
+    <div class="export-preview"><canvas id="exportPreview" width="220" height="220"></canvas></div>
+    <div class="modal-row"><div class="modal-label">background</div><div class="color-swatches" id="bgSwatches"></div></div>
+    <div class="modal-row"><div class="modal-label">size</div><div class="modal-options">
+      <button class="opt selected" data-group="size" data-val="1x" onclick="selectOpt(this)">1x (560px)</button>
+      <button class="opt" data-group="size" data-val="2x" onclick="selectOpt(this)">2x (1120px)</button>
+      <button class="opt" data-group="size" data-val="4x" onclick="selectOpt(this)">4x (2240px)</button>
+    </div></div>
+    <div class="modal-row"><div class="modal-label">show word</div><div class="modal-options">
+      <button class="opt selected" data-group="word" data-val="yes" onclick="selectOpt(this)">yes</button>
+      <button class="opt" data-group="word" data-val="no" onclick="selectOpt(this)">no</button>
+    </div></div>
+    <div class="modal-row"><div class="modal-label">show date</div><div class="modal-options">
+      <button class="opt selected" data-group="date" data-val="yes" onclick="selectOpt(this)">yes</button>
+      <button class="opt" data-group="date" data-val="no" onclick="selectOpt(this)">no</button>
+    </div></div>
+    <div class="modal-row"><div class="modal-label">show time</div><div class="modal-options">
+      <button class="opt" data-group="time" data-val="yes" onclick="selectOpt(this)">yes</button>
+      <button class="opt selected" data-group="time" data-val="no" onclick="selectOpt(this)">no</button>
+    </div></div>
+    <div class="modal-actions">
+      <button class="modal-btn" onclick="closeExport()">cancel</button>
+      <button class="modal-btn" onclick="shareImage()">share</button>
+      <button class="modal-btn primary" onclick="doDownload()">download</button>
+    </div>
+  </div>
+</div>
+
+<!-- Calendar view -->
+<div class="view hidden" id="viewCal">
+  <div class="cal-page">
+    <div class="cal-topbar">
+      <button class="cal-back" onclick="hideCal()">&#8592; back</button>
+      <div class="cal-nav">
+        <button class="cal-arrow" onclick="calPrev()">&#8249;</button>
+        <div class="cal-month-label" id="calMonthLabel"></div>
+        <button class="cal-arrow" onclick="calNext()">&#8250;</button>
+      </div>
+      <button class="cal-today" onclick="jumpToToday()">today</button>
+    </div>
+    <div class="cal-dow-row">
+      <div class="cal-dow">su</div><div class="cal-dow">mo</div><div class="cal-dow">tu</div>
+      <div class="cal-dow">we</div><div class="cal-dow">th</div><div class="cal-dow">fr</div>
+      <div class="cal-dow">sa</div>
+    </div>
+    <div class="cal-body">
+      <div class="cal-grid" id="calGrid"></div>
+      <div class="cal-detail-panel" id="calDetailPanel"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Favourites view -->
+<div class="view hidden" id="viewFav">
+  <div class="fav-page">
+    <div class="fav-topbar">
+      <button class="cal-back" onclick="hideFav()">&#8592; back</button>
+      <div class="fav-title">favourites</div>
+      <div style="width:60px"></div>
+    </div>
+    <div class="fav-body">
+      <div class="fav-grid" id="favGrid"></div>
+      <div class="fav-empty hidden" id="favEmpty">no favourites yet.<br>star an orb to save it here.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Day slide panel -->
+<div class="day-slide" id="daySlide">
+  <button class="day-slide-back" onclick="closeDaySlide()">&#8592; back</button>
+  <div class="day-slide-date" id="daySlideDate"></div>
+  <div class="day-slide-entries" id="daySlideEntries"></div>
+</div>
+
+<!-- Import toast -->
+<div class="toast" id="importToast"></div>
+
+<script src="orbs.js"></script>
+<script src="journal.js"></script>
+<script src="export.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+<script src="firebase.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
