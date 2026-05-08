@@ -114,6 +114,7 @@ var auraCloud=(function(){
         activeProfile=snapshot.activeProfile;
         localStorage.setItem(ACTIVE_PROFILE_KEY,activeProfile);
       }
+      if(typeof cleanupLegacyProfiles==='function')cleanupLegacyProfiles();
     }catch(e){
       console.error('[aura] cloud merge failed',e);
     }finally{
@@ -171,7 +172,11 @@ var auraCloud=(function(){
       if(typeof openSavedProfileIfAny==='function'&&!openSavedProfileIfAny()){
         renderProfileScreen(loadProfiles(),activeProfile);
       }
-      pushNow();
+      if(typeof hasPendingProfileSetup==='function'&&hasPendingProfileSetup()){
+        setStatus('enter your name to finish setup');
+      }else{
+        pushNow();
+      }
       if(unsubscribe)unsubscribe();
       unsubscribe=stateDoc().onSnapshot(function(snap){
         if(!snap.exists||snap.metadata.hasPendingWrites)return;

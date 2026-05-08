@@ -6,11 +6,62 @@ var activeSwipeEntry=null;
 var HISTORY_KEY='aura_history',MAX_HISTORY=365;
 var PROFILE_LIST_KEY='aura_profiles',ACTIVE_PROFILE_KEY='aura_active_profile',activeProfile='';
 var AUTH_MODE_KEY='aura_auth_mode';
+var LEGACY_PROFILE_NAME='me',PENDING_HISTORY_KEY='aura_pending_history';
 
 function profileInitial(name){return(name||'?').trim().charAt(0).toUpperCase();}
 function profileStorageKeyFor(name){return HISTORY_KEY+'_'+encodeURIComponent(name);}
 function profileStorageKey(){return profileStorageKeyFor(activeProfile);}
 function loadProfiles(){try{return JSON.parse(localStorage.getItem(PROFILE_LIST_KEY))||[];}catch(e){return[];}}
+function loadProfileEntries(name){try{return JSON.parse(localStorage.getItem(profileStorageKeyFor(name)))||[];}catch(e){return[];}}
+function loadPendingEntries(){try{return JSON.parse(localStorage.getItem(PENDING_HISTORY_KEY))||[];}catch(e){return[];}}
+function savePendingEntries(entries){try{if(entries&&entries.length)localStorage.setItem(PENDING_HISTORY_KEY,JSON.stringify(entries));else localStorage.removeItem(PENDING_HISTORY_KEY);}catch(e){}}
+function profileIsLegacyDefault(name){return(name||'').trim().toLowerCase()===LEGACY_PROFILE_NAME;}
+function mergeEntryLists(base,incoming){
+  var map={};
+  function add(entry){
+    if(!entry)return;
+    var key=entryKey(entry);
+    if(map[key])map[key]=Object.assign({},map[key],entry,{fav:!!(map[key].fav||entry.fav)});
+    else map[key]=entry;
+  }
+  (base||[]).forEach(add);
+  (incoming||[]).forEach(add);
+  return Object.keys(map).map(function(key){return map[key];}).sort(function(a,b){
+    var av=(a.date||'')+' '+(a.time||'');
+    var bv=(b.date||'')+' '+(b.time||'');
+    return bv.localeCompare(av);
+  }).slice(0,MAX_HISTORY);
+}
+function stashPendingEntries(entries){savePendingEntries(mergeEntryLists(loadPendingEntries(),entries||[]));}
+function takePendingEntries(){var entries=loadPendingEntries();savePendingEntries([]);return entries;}
+function mergeEntriesIntoProfile(name,entries){
+  if(!entries||!entries.length)return;
+  try{
+    localStorage.setItem(profileStorageKeyFor(name),JSON.stringify(mergeEntryLists(loadProfileEntries(name),entries)));
+    markDataChanged();
+  }catch(e){}
+}
+function cleanupLegacyProfiles(){
+  var profiles=loadProfiles(),next=[],changed=false;
+  profiles.forEach(function(name){
+    if(profileIsLegacyDefault(name)){
+      stashPendingEntries(loadProfileEntries(name));
+      try{localStorage.removeItem(profileStorageKeyFor(name));}catch(e){}
+      changed=true;
+      return;
+    }
+    if(next.indexOf(name)<0)next.push(name);
+  });
+  if(changed){
+    try{localStorage.setItem(PROFILE_LIST_KEY,JSON.stringify(next));}catch(e){}
+    if(profileIsLegacyDefault(activeProfile))activeProfile='';
+    try{if(profileIsLegacyDefault(localStorage.getItem(ACTIVE_PROFILE_KEY)||''))localStorage.removeItem(ACTIVE_PROFILE_KEY);}catch(e){}
+    setProfileActiveFlag();
+    markDataChanged();
+  }
+  return changed;
+}
+function hasPendingProfileSetup(){return loadPendingEntries().length>0;}
 function accountMode(){try{return localStorage.getItem(AUTH_MODE_KEY)||'';}catch(e){return'';}}
 function isAccountReady(){return document.body.classList.contains('account-ready');}
 function showAuthScreen(){
@@ -82,6 +133,10 @@ function setMobileTab(tab){document.body.setAttribute('data-mobile-tab',tab||'ma
 function openSavedProfileIfAny(){
   var profiles=loadProfiles();
   var last='';try{last=localStorage.getItem(ACTIVE_PROFILE_KEY)||'';}catch(e){}
+  if(profileIsLegacyDefault(last)){
+    try{localStorage.removeItem(ACTIVE_PROFILE_KEY);}catch(e){}
+    return false;
+  }
   if(isAccountReady()&&last&&profiles.indexOf(last)>=0){
     selectProfile(last);
     return true;
@@ -106,29 +161,17 @@ function flashSaveFeedback(){
 // ── Profile init & screen ──────────────────────────────────────────────────
 
 // Migrate data from the old single-profile storage (key='aura_history')
-// into the new per-profile key (key='aura_history_me') so nothing is lost.
+// into a pending buffer. It gets attached to the first real profile name.
 function migrateOldData(){
   try{
     var oldData=localStorage.getItem(HISTORY_KEY);
     if(!oldData)return; // nothing to migrate
     var oldEntries=JSON.parse(oldData);
     if(!Array.isArray(oldEntries)||oldEntries.length===0)return;
-    // target key for a profile named 'me'
-    var targetKey=HISTORY_KEY+'_'+encodeURIComponent('me');
-    var existing=[];
-    try{existing=JSON.parse(localStorage.getItem(targetKey))||[];}catch(e){}
-    // merge: put old entries in, skip duplicates by key
-    var seen={};
-    existing.forEach(function(e){seen[e.date+'|'+(e.time||'')+'|'+(e.word||'')]=true;});
-    var toAdd=oldEntries.filter(function(e){return !seen[e.date+'|'+(e.time||'')+'|'+(e.word||'')];});
-    var merged=existing.concat(toAdd);
-    localStorage.setItem(targetKey,JSON.stringify(merged));
-    // ensure 'me' is in the profile list
-    var profiles=loadProfiles();
-    if(profiles.indexOf('me')<0){profiles.unshift('me');saveProfiles(profiles);}
+    stashPendingEntries(oldEntries);
     // remove the old bare key so we don't migrate again
     localStorage.removeItem(HISTORY_KEY);
-    console.log('[aura] migrated '+toAdd.length+' entries from old storage into profile \'me\'.');
+    console.log('[aura] moved '+oldEntries.length+' old entries into pending profile setup.');
   }catch(e){
     console.warn('[aura] migration failed:',e);
   }
@@ -136,6 +179,7 @@ function migrateOldData(){
 
 function initProfiles(){
   migrateOldData(); // restore old data before anything else
+  cleanupLegacyProfiles();
   var profiles=loadProfiles();
   var last='';try{last=localStorage.getItem(ACTIVE_PROFILE_KEY)||'';}catch(e){}
   if(accountMode()==='guest')setAccountReady('guest',last&&profiles.indexOf(last)>=0?{deferView:true}:null);
@@ -149,6 +193,7 @@ function renderProfileScreen(profiles,highlightName){
   var list=document.getElementById('profileList');
   list.innerHTML='';
   var firstRun=profiles.length===0;
+  var hasPending=hasPendingProfileSetup();
   profiles.forEach(function(name){
     var card=document.createElement('button');
     card.className='profile-card'+(name===highlightName?' recent':'');
@@ -161,8 +206,12 @@ function renderProfileScreen(profiles,highlightName){
   });
   var row=document.getElementById('profileNewInputRow');
   var btn=document.querySelector('.profile-new-btn');
-  if(btn)btn.classList.toggle('hidden',firstRun);
-  if(row)row.classList.toggle('hidden',!firstRun);
+  var prompt=document.getElementById('profilePrompt');
+  var inp=document.getElementById('profileNewInput');
+  if(prompt)prompt.textContent=firstRun?'enter your name to begin':(hasPending?'choose a profile or enter your name':'choose or create a profile');
+  if(inp)inp.placeholder=(firstRun||hasPending)?'enter your name':'your name';
+  if(btn)btn.classList.toggle('hidden',firstRun||hasPending);
+  if(row)row.classList.toggle('hidden',!(firstRun||hasPending));
   document.body.classList.add('profile-screen-active');
   document.getElementById('viewProfile').classList.remove('hidden');
   document.getElementById('viewMain').classList.add('hidden');
@@ -207,6 +256,8 @@ document.addEventListener('click',function(e){
   }
 });
 function selectProfile(name){
+  if(profileIsLegacyDefault(name))return;
+  mergeEntriesIntoProfile(name,takePendingEntries());
   activeProfile=name;
   try{localStorage.setItem(ACTIVE_PROFILE_KEY,name);}catch(e){}
   setProfileActiveFlag();
@@ -232,8 +283,10 @@ function showNewProfileInput(){
 function confirmNewProfile(){
   var inp=document.getElementById('profileNewInput');
   var name=(inp.value||'').trim();if(!name)return;
+  if(profileIsLegacyDefault(name)){showToast('enter your name');return;}
   var profiles=loadProfiles();
   if(profiles.indexOf(name)<0){profiles.push(name);saveProfiles(profiles);}
+  mergeEntriesIntoProfile(name,takePendingEntries());
   selectProfile(name);
 }
 document.addEventListener('DOMContentLoaded',function(){
@@ -265,6 +318,7 @@ function confirmRename(){
   var oldName=activeProfile;
   var newName=(inp.value||'').trim();
   if(!newName){if(note)note.textContent='enter a name';return;}
+  if(profileIsLegacyDefault(newName)){if(note)note.textContent='enter your name';return;}
   if(newName===oldName){closeRename();return;}
   var profiles=loadProfiles();
   if(profiles.indexOf(newName)>=0){if(note)note.textContent='that name already exists';return;}
@@ -515,6 +569,10 @@ function importData(evt){
       // merge profiles
       var existing = loadProfiles();
       Object.keys(payload.data).forEach(function(name){
+        if(profileIsLegacyDefault(name)){
+          stashPendingEntries(payload.data[name]||[]);
+          return;
+        }
         if (existing.indexOf(name) < 0) existing.push(name);
         // merge entries, no duplicates
         var key = HISTORY_KEY + '_' + encodeURIComponent(name);

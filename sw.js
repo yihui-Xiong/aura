@@ -1,4 +1,4 @@
-const CACHE_NAME = "aura-pwa-v2";
+const CACHE_NAME = "aura-pwa-v3";
 const APP_ASSETS = [
   "./",
   "./index.html",
